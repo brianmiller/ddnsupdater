@@ -62,6 +62,12 @@ else
 	update add $record 1 $recordType $recordData
 	send
 	EOM
+
+	if [ ! $? = 0 ]; then
+		echo "[ ERROR: ] Could not send update to $externalAuthoritativeDnsServer. We can't continue, exiting..."
+		exit 1
+	fi
+
 	echo "[ NOTICE: ] Waiting $waitAfterUpdate seconds before beginning external testing..."
 	sleep $waitAfterUpdate
 fi
