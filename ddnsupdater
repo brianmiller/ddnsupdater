@@ -79,7 +79,7 @@ while [ $testRetryCounter -lt $testRetries ]; do
 	let testRetryCounter++
 	
 	externalDnsTest=$(dig +short -t $recordType $record @$externalTestDnsServer|sed 's/\"//g')
-	if [ $externalDnsTest = $recordData ]; then
+	if [ "$externalDnsTest" = "$recordData" ]; then
 		echo
 		echo "[ SUCCESS: ]: External DNS server '$externalTestDnsServer' says '$record' equals '$externalDnsTest'!"
 		exit 0
