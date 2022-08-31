@@ -1,0 +1,91 @@
+#!/bin/bash
+
+# How many times should we check to see if our record was updated?
+testRetries=3
+
+# How long to wait between testRetries (in seconds)
+testRetryWait=2
+
+# How long to wait after update before beginning testing (in seconds)
+waitAfterUpdate=2
+
+# External DNS server to use for record availbility testing. Note: 8.8.8.8 seems to reflect instant changes
+externalTestDnsServer="8.8.8.8"
+
+
+if [ ! $1 ] || [ ! $2 ] || [ ! $3 ] || [ ! $4 ]; then
+	echo "USAGE ddnsupdater <record type> <record> <record data> <dns server to send update to>"
+	echo " Example: ./ddnsupdater txt domain_to_update.tld testdata extdns1.server.domain"
+	exit 1
+else
+	recordType="$1"
+	record="$2"
+	recordData="$3"
+	externalDnsInitialCheck=$(dig +short -t $recordType $record @$externalTestDnsServer|sed 's/\"//g')
+	externalAuthoritativeDnsServer="$4"
+
+	echo
+	echo "[ NOTICE: ] Execution date: `date`"
+
+	echo
+	echo "[ NOTICE: ] Authoritative DNS server: $externalAuthoritativeDnsServer"
+	echo "[ NOTICE: ] External test DNS server: $externalTestDnsServer"
+	echo "[ NOTICE: ] Seconds to wait before testing: $waitAfterUpdate"
+	echo "[ NOTICE: ] Seconds to wait before retry: $testRetryWait"
+	echo "[ NOTICE: ] Test retries: $testRetries"
+	
+	echo
+
+	echo "[ NOTICE: ] New DNS data to update:"
+	echo "[ NOTICE: ]  Record type: $recordType"
+	echo "[ NOTICE: ]  Record: $record"
+	echo "[ NOTICE: ]  Record data: $recordData"
+
+	echo
+
+	echo "[ NOTICE: ] Current DNS data:"
+	echo "[ NOTICE: ]  Record type: $recordType"
+	echo "[ NOTICE: ]  Record: $record"
+	echo "[ NOTICE: ]  Record data: $externalDnsInitialCheck"
+	echo
+	
+	if [ "$externalDnsInitialCheck" = "$recordData" ]; then
+		echo "[ NOTICE: ] '$record' already equals '$recordData'. We're not proceeding with the update..."
+		echo
+		exit 2
+	fi
+
+	#send ddns update to authoritative name server for this (sub)domain
+	/usr/bin/nsupdate <<-EOM
+	server $externalAuthoritativeDnsServer
+	update delete $record $recordType
+	update add $record 1 $recordType $recordData
+	send
+	EOM
+	echo "[ NOTICE: ] Waiting $waitAfterUpdate seconds before beginning external testing..."
+	sleep $waitAfterUpdate
+fi
+
+
+testRetryCounter=0
+while [ $testRetryCounter -lt $testRetries ]; do
+	let testRetryCounter++
+	
+	externalDnsTest=$(dig +short -t $recordType $record @$externalTestDnsServer|sed 's/\"//g')
+	if [ $externalDnsTest = $recordData ]; then
+		echo
+		echo "[ SUCCESS: ]: External DNS server '$externalTestDnsServer' says '$record' equals '$externalDnsTest'!"
+		exit 0
+	else
+		echo "[ NOTICE: ] Waiting for DNS propagation..."
+	fi
+
+	sleep $testRetryWait
+
+	if [ $testRetryCounter -eq $testRetries ]; then
+		echo
+		echo "[ ERROR: ]: Maximum wait time exceeded. This means the DDNS record didn't update within the configured time.  This DOES NOT mean it won't eventually update. Consider increasing your timeouts..."
+		echo
+		exit 1
+	fi
+done
